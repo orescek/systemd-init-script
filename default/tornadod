@@ -1,0 +1,28 @@
+#User Manipulation for torandod script
+#Application to run with full path
+RUN_APP="/vagrant/app.py"
+
+#Parameters - list of them
+APP_OPTS="9998"
+
+#User to run the selected script
+RUN_AS_USER="vagrant"
+
+# Where PID file is located.
+# Be aware that location needs to have w/r permissions for selected user
+PID_PATH="/var/run/tornado/"
+
+# Where LOG file is located.
+# Be aware that location needs to have w/r permissions for selected user
+LOG_FILE_PATH="/var/log/tornado/"
+
+#If you would like to enable log rotations set this variable: 0 - disabled, 1- enabled
+LOG_ROTATE=1
+
+#Max file size for logrotate. In Bytes
+MaxLogFileSize=2048
+
+# If app is unavaliable to go to background set it to 1 if 0 we presume that app is
+# able to go by its own
+# if 1 we cannot get exit statuses of the app
+PUT_IN_BACKGROUND=1

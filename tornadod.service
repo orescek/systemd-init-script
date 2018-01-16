@@ -1,0 +1,12 @@
+[Unit]
+Description = Tornado Deamon
+
+[Service]
+ExecStart=/usr/local/bin/tornadod start
+ExecStop=/usr/local/bin/tornadod stop
+ExecReload=/usr/local/bin/tornadod reload
+RemainAfterExit=yes
+EnvironmentFile=/vagrant/default/tornadod
+
+[Install]
+WantedBy = multi-user.target

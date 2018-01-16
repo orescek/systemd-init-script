@@ -1,0 +1,151 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          tornadod
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Description:       
+# Tornado deamon. 
+#   Check Default variables for setting. Script can be seted also with tornadod.service
+### END INIT INFO
+
+
+VERSION=0.1
+
+# Can be a runlevel symlink
+if [ -L "$0" ]; then
+    SCRIPT_FILE=$(readlink "$0")
+else
+    SCRIPT_FILE="$0"
+fi
+
+SCRIPT_NAME="$(basename "$SCRIPT_FILE")" 
+DEFAULT_APP="/vagrant/app.py" # location of the application
+DEFAULT_USER="vagrant" # default user
+DEFAULT_LOG_ROTATE=1 # Rotate log 1 - enable, 0 - disable 
+DEFAULT_MaxFileSize=2048 # size of file before rotate
+DEFAULT_APP_OPTS="8888" # default options
+DEFAULT_PUT_IN_BACKGROUND=1 # if we shuld put program in background 1 - yes, 0 - no
+RUN_APP=${RUN_APP:-$DEFAULT_APP}
+APP_NAME=$(basename "$RUN_APP")
+
+DEFAULT_PID_PATH="/var/run/tornado/"
+DEFAULT_LOG_PATH="/var/log/tornado/"
+
+PID_FILE=${PID_PATH:-$DEFAULT_PID_PATH}/$APP_NAME.pid
+LOG_FILE=${LOG_PATH:-$DEFAULT_LOG_PATH}/$APP_NAME.log
+RUN_AS_USER=${RUN_AS_USER:-$DEFAULT_USER} 
+APP_OPTS=${APP_OPTS:-$DEFAULT_APP_OPTS}
+PUT_IN_BACKGROUND=${PUT_IN_BACKGROUND:-$DEFAULT_PUT_IN_BACKGROUND}
+LOG_ROTATE=${LOG_ROTATE:-$DEFAULT_LOG_ROTATE}
+MaxLogFileSize=${MaxLogFileSize:-$DEFAULT_MaxFileSize} 
+
+if ! [ -d  $(dirname "$PID_FILE") ]; then
+    sudo mkdir -p "$(dirname "$PID_FILE")"
+fi
+
+function log_daemon_msg () {
+    echo $@ | tee -a $LOG_FILE
+    if [ $LOG_ROTATE -eq 1 ]; then
+        fsize=`du -b $LOG_FILE | tr -s '\t' ' ' | cut -d' ' -f1`
+        if [ $fsize -gt $MaxLogFileSize ];then   
+            timestamp=`date +%s`
+            mv $LOG_FILE $LOG_FILE.$timestamp
+            touch $LOG_FILE
+        fi
+    fi
+}
+
+function status_check () {
+    start-stop-daemon --status --pidfile $PID_FILE
+    eval "$1=$?"
+}
+
+status_deamon () {
+    status_check STATUS 
+    if [ $STATUS -eq 0 ]; then 
+        log_daemon_msg  "Program $APP_NAME is running with pid: $(cat $PID_FILE)"
+    elif [ $STATUS -eq 1 ]; then
+        log_daemon_msg "Program is not running and the pid file exists."
+       while true; do
+            read -p "Do you wish to remove old PID file? [Y/n]" yn 
+            case $yn in
+                [Yy]* ) rm -f $PID_FILE; break;;
+                [Nn]* ) exit;;
+                * ) echo "Please answer yes or no.";;
+            esac
+        done
+    elif [ $STATUS -eq 3 ]; then
+        log_daemon_msg "Program is not running."
+    elif [ $STATUS -eq 4 ]; then
+        log_daemon_msg "Unable to determine program status."
+    else
+        log_daemon_msg "Unknown status"
+    fi 
+}
+
+function start_deamon () {
+
+    status_check STATUS 
+
+    if [ $STATUS -eq 0 ]; then
+        log_daemon_msg "Program $APP_NAME already started skipped..."
+    else    
+        if [ $PUT_IN_BACKGROUND -eq 1 ]; then # we will be unable to check the status of applications
+            log_daemon_msg "Program $APP_NAME put in background..."
+            start-stop-daemon --start --name $APP_NAME --verbose --chuid $RUN_AS_USER -m --pidfile $PID_FILE  --background --exec $RUN_APP -- $APP_OPTS 2>&1 | tee -a $LOG_FILE
+            sleep 1 # to be shure that app will start we shall sleep it for little
+            status_deamon # added for check if application will fail
+        else
+            start-stop-daemon --start --name $APP_NAME --verbose --chuid $RUN_AS_USER -m --pidfile $PID_FILE --exec $RUN_APP $APP_OPTS 2>&1 | tee -a $LOG_FILE
+        fi
+    fi
+}
+
+function stop_deamon () {
+    status_check STATUS
+    
+    if [ $STATUS -eq 0 ]; then
+        start-stop-daemon --stop --verbose --remove-pidfile --pidfile $PID_FILE --name $APP_NAME 2>&1 | tee -a $LOG_FILE
+    elif [ $STATUS -eq 1 ]; then
+        log_daemon_msg "Program $APP_NAME already stoped but $PID_FILE exists. You need to manualy check it ..."
+    elif [ $STATUS -eq 3 ]; then
+        log_daemon_msg "Program $APP_NAME already stoped ..."
+    else
+        log_daemon_msg "Program $APP_NAME already stoped but we cannot determine status..."
+    fi
+}
+
+
+case "$1" in
+    start)
+        log_daemon_msg "Starting $SCRIPT_NAME daemon manager..."
+        start_deamon 
+    ;;
+
+    stop)
+        log_daemon_msg "Stoping $SCRIPT_NAME daemon manager..." 
+        stop_deamon
+    ;;
+
+    restart|reload|force-reload)
+        log_daemon_msg "Restarting $SCRIPT_NAME daemon manager..."
+        stop_deamon
+        log_daemon_msg "Starting $SCRIPT_NAME daemon manager..."
+        start_deamon
+    ;;
+
+    status)
+        log_daemon_msg "Status check of $SCRIPT_NAME daemon manager..."
+        status_deamon
+    ;;
+
+    *)
+        log_daemon_msg "Usage: /etc/init.d/${SCRIPT_NAME} {start|stop|restart}"
+        exit 0
+    ;;
+esac
+
+exit 0
+
